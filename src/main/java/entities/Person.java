@@ -1,52 +1,110 @@
 package entities;
 
-import jakarta.persistence.*;
+import org.eclipse.persistence.jpa.jpql.parser.DateTime;
 
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
 @Table(name = "person")
+@NamedQueries({
+        @NamedQuery(name = "Person.deleteById", query = "delete from Person p where p.id = :id")
+})
 public class Person {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
     private Long id;
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, length = 30)
     private String name;
+    @Column(name = "birth_date", nullable = false)
+//    @Temporal(TemporalType.TIMESTAMP)
+    private LocalDateTime birthDate;
 
-    @Column(name = "age", nullable = false)
+    @Transient
     private Integer age;
 
     @ElementCollection
     @Column(name = "address")
     @CollectionTable(name = "person_addresses", joinColumns = @JoinColumn(name = "owner_id"))
-    private Set<String> addresses = new LinkedHashSet<>();
+    private Set<String> addresses = new HashSet<>();
 
+    @OneToMany(mappedBy = "person", orphanRemoval = true, cascade = CascadeType.ALL)
+    private Set<Phone> phones = new LinkedHashSet<>();
+
+    @ManyToMany
+    @JoinTable(name = "person_cars",
+            joinColumns = @JoinColumn(name = "person_id"),
+            inverseJoinColumns = @JoinColumn(name = "cars_id"))
+    private Set<Car> cars = new LinkedHashSet<>();
+
+    @Column(name = "created", updatable = false)
+    private LocalDateTime created;
+
+    @Column(name = "modified")
+    private LocalDateTime editted;
+
+    // Database is not set to handle dates, so I do it with JPA lifecycle methods. For more see: https://www.baeldung.com/jpa-entity-lifecycle-events
+    @PreUpdate
+    public void onUpdate() {
+        editted = LocalDateTime.now(ZoneId.of("GMT+01:00"));
+    }
+
+    @PrePersist
+    public void onPersist(){
+        editted = LocalDateTime.now(ZoneId.of("GMT+01:00"));
+        created = LocalDateTime.now(ZoneId.of("GMT+01:00"));
+    }
+
+    public Person() {
+    }
+    public Person(String name) {
+        this.name = name;
+    }
+    public Person(String name, String birthDate) {
+        this.name = name;
+        setBirthDate(String.valueOf(birthDate));
+        setAge();
+    }
     public Set<String> getAddresses() {
         return addresses;
     }
 
-    public void setAddresses(Set<String> addresses) {
-        this.addresses = addresses;
+    public void addAddress(String address) {
+        this.addresses.add(address);
     }
 
-    public Person(){
-
+    public void removeAddress(String address) {
+        for (String a : this.addresses)
+            if (a == address)
+                this.addresses.remove(a);
     }
-    public Person(String name, Integer age){
-        this.name = name;
-        this.age = age;
+    public Set<Car> getCars() {
+        return cars;
+    }
 
+    public void addCar(Car car) {
+        this.cars.add(car);
+        car.getPersons().add(this);
+    }
+    public void removeCar(Car car) {
+        this.cars.remove(car);
+        car.getPersons().remove(this);
     }
 
     public Integer getAge() {
         return age;
     }
 
-    public void setAge(Integer age) {
-        this.age = age;
+    public void setAge( ) {
+        java.time.Duration duration = java.time.Duration.between(this.birthDate, LocalDateTime.now());
+        this.age = (int) duration.toDays() / 365;
     }
 
     public String getName() {
@@ -57,6 +115,20 @@ public class Person {
         this.name = name;
     }
 
+    public Set<Phone> getPhones() {
+        return phones;
+    }
+
+    public void addPhone(Phone phone) {
+        this.phones.add(phone);
+        phone.setPerson(this);
+    }
+
+    public void removePhone(Phone phone) {
+        this.phones.remove(phone);
+        phone.setPerson(null);
+    }
+
     public Long getId() {
         return id;
     }
@@ -65,11 +137,23 @@ public class Person {
         this.id = id;
     }
 
+    public LocalDateTime getBirthDate() {
+        return birthDate;
+    }
+
+    public void setBirthDate(String birthDate) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        LocalDateTime bd = LocalDateTime.parse(birthDate, formatter);
+        this.birthDate = bd;
+    }
+
     @Override
     public String toString() {
         return getClass().getSimpleName() + "(" +
                 "id = " + id + ", " +
                 "name = " + name + ", " +
-                "age = " + age + ")";
+                "birthDate = " + birthDate + ", " +
+                "age = " + this.age + ", " +
+                "addresses = " + addresses + ")";
     }
 }
